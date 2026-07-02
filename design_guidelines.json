@@ -1,0 +1,115 @@
+{
+  "theme": "DARK",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "aesthetic_vibe": "Linear meets Runway meets a video editor timeline aesthetic. Powerful, technical, and creative. Dense data but with structural whitespace.",
+  "colors": {
+    "background": {
+      "canvas": "#0A0A0A",
+      "surface": "#121212",
+      "surface_raised": "#1A1A1A",
+      "surface_overlay": "#262626"
+    },
+    "border": {
+      "default": "rgba(255,255,255,0.10)",
+      "subtle": "rgba(255,255,255,0.05)",
+      "focus": "rgba(255,255,255,0.20)"
+    },
+    "text": {
+      "primary": "#F3F4F6",
+      "secondary": "#9CA3AF",
+      "muted": "#6B7280"
+    },
+    "accent": {
+      "primary": "#FF3B30",
+      "primary_hover": "#FF5045",
+      "secondary": "#0055FF",
+      "success": "#22C55E",
+      "warning": "#F59E0B",
+      "error": "#EF4444"
+    }
+  },
+  "typography": {
+    "headings": {
+      "fontFamily": "Outfit, sans-serif",
+      "weights": [400, 500, 600],
+      "tracking": "tracking-tight"
+    },
+    "body": {
+      "fontFamily": "IBM Plex Sans, sans-serif",
+      "weights": [400, 500]
+    },
+    "mono": {
+      "fontFamily": "JetBrains Mono, monospace",
+      "weights": [400],
+      "usage": "Logs, timecodes, IDs, badges, data metrics"
+    }
+  },
+  "layout_and_spacing": {
+    "strategy": "The Control Room Grid (Dense, Data Correlation) combined with structural whitespace via surface elevation.",
+    "sidebar": "w-64 fixed, L-shape global chrome, border-r border-white/10, bg-[#0A0A0A]",
+    "main_content": "bg-[#0A0A0A] text-gray-300 pl-64 min-h-screen",
+    "gaps": "gap-4 to gap-6 for tight data correlation",
+    "padding": "p-6 or p-8 inside cards to avoid collision with borders",
+    "borderRadius": "rounded-lg (8px) for cards, rounded-md (6px) for buttons/inputs"
+  },
+  "components": {
+    "cards": "Flat background (bg-[#121212]), hairline border (border border-white/10), no shadows. Hover state: slight lift or border brighten.",
+    "buttons": {
+      "primary": "bg-[#FF3B30] text-white hover:bg-[#FF5045] rounded-md font-medium transition-colors border border-transparent",
+      "secondary": "bg-transparent border border-white/10 text-white hover:bg-white/5 rounded-md transition-colors",
+      "ghost": "bg-transparent text-gray-400 hover:text-white hover:bg-white/5 rounded-md"
+    },
+    "inputs": "bg-[#0A0A0A] border border-white/10 rounded-md text-white focus:ring-1 focus:ring-[#FF3B30] focus:border-[#FF3B30]",
+    "badges": "rounded-sm px-2 py-0.5 text-xs font-mono uppercase tracking-widest border border-white/10 bg-white/5 text-gray-300",
+    "terminal": "bg-black border border-white/10 p-4 font-mono text-xs text-gray-400 rounded-lg overflow-y-auto",
+    "table": "Compact density, flat rows, hover:bg-white/5, border-b border-white/10",
+    "checkbox": "Square, border-white/20, checked:bg-[#FF3B30] checked:border-[#FF3B30]"
+  },
+  "motion": {
+    "hover": "Fast transitions (150ms) for opacity and border colors",
+    "loaders": "Minimalist spinning mono characters or progress bars, not heavy spinners"
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5, simple, technical"
+  },
+  "media": {
+    "scene_images": [
+      {
+        "url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwxfHxjaW5lbWF0aWMlMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODI4NjE2MjN8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Cinematic portrait scene 1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1536766768598-e09213fdcf22?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHw0fHxjaW5lbWF0aWMlMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODI4NjE2MjN8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Cinematic portrait scene 2"
+      },
+      {
+        "url": "https://images.pexels.com/photos/8474478/pexels-photo-8474478.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Sci-fi landscape scene 1"
+      },
+      {
+        "url": "https://images.pexels.com/photos/1606327/pexels-photo-1606327.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Sci-fi landscape scene 2"
+      },
+      {
+        "url": "https://images.pexels.com/photos/28122495/pexels-photo-28122495.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Cyberpunk city scene 1"
+      },
+      {
+        "url": "https://images.pexels.com/photos/17195067/pexels-photo-17195067.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Cyberpunk city scene 2"
+      }
+    ]
+  },
+  "specific_page_guidelines": {
+    "dashboard": "Top level metrics using 'Control Room' grid. Shows total scenes, generated images, generated videos, render status. Use big mono typography for numbers.",
+    "scenes_list": "Data table showing Airtable rows. Status badges (e.g. 'Pending Image', 'Video Ready') using mono font. Include a thumbnail if image generated.",
+    "image_gallery": "4-column masonry grid. Images must have group-hover effect revealing a checkbox to select for video gen. Checkboxes should be prominently placed at top-left of image overlay. Dark gradient overlay on hover so checkbox is visible.",
+    "remotion_render": "Split view: Left side configuration (composition selector, resolution, start button), Right side black terminal window (bg-black) for live logs with monospace font.",
+    "settings_login": "One-time browser login page with noVNC iframe embed for capturing Google Flow / Grok cookies. Needs a full-width dense layout."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure text contrast on surface backgrounds.",
+    "data_testids": "MANDATORY on all interactive elements (buttons, inputs, checkboxes, tabs). Use kebab-case."
+  }
+}

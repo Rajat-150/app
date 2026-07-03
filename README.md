@@ -19,8 +19,8 @@ A self-hostable dashboard that orchestrates your AI video pipeline **without API
 ```bash
 git clone <this-repo>
 cd scene-studio
-cp .env.example .env
-# fill in AIRTABLE_* and REACT_APP_BACKEND_URL
+cp env.example .env
+# edit .env — set AIRTABLE_* and REACT_APP_BACKEND_URL=http://<your-vps-ip>:8001
 docker compose up -d
 ```
 

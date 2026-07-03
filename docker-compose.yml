@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Scene Studio — VPS control panel for the automated video pipeline.
 # Run: docker compose up -d
 # Then open http://your-vps:3000

@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
     depends_on: [backend]
     ports:
-      - "3000:80"
+      - "8080:80"
 
   # Optional headed browser + noVNC for one-time Google Flow / Grok login.
   # Bring up with: docker compose --profile browser up -d

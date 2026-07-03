@@ -30,8 +30,12 @@ export default function Scenes() {
   const sync = async () => {
     setSyncing(true);
     try {
-      await api.post("/scenes/sync-airtable");
+      const res = await api.post("/scenes/sync-airtable");
       await load();
+      alert(`Synced ${res.data.synced} scenes from Airtable (${res.data.airtable_configured ? "live" : "demo data"})`);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "unknown error";
+      alert("Airtable sync failed:\n\n" + msg + "\n\nCheck backend logs and verify AIRTABLE_* variables in your .env file. Field names must match your Airtable column names exactly (case-sensitive).");
     } finally { setSyncing(false); }
   };
 

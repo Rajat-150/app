@@ -48,7 +48,7 @@ def now_iso() -> str:
 class Scene(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     airtable_id: Optional[str] = None
-    scene_number: Optional[int] = None
+    scene_number: Optional[str] = None  # accepts string identifiers like "S01-L01-A" or numbers
     image_prompt: str = ""
     video_prompt: str = ""
     status: str = "pending"  # pending | image_generated | video_generated | complete
@@ -116,25 +116,32 @@ async def dashboard_stats():
 # ---------- Scenes ----------
 @api.post("/scenes/sync-airtable")
 async def sync_airtable():
-    rows = await airtable.fetch_scenes()
+    try:
+        rows = await airtable.fetch_scenes()
+    except Exception as e:
+        logger.exception("Airtable fetch failed")
+        raise HTTPException(status_code=502, detail=f"Airtable fetch failed: {e}")
     upserted = 0
     for r in rows:
         existing = None
         if r.get("airtable_id"):
             existing = await db.scenes.find_one({"airtable_id": r["airtable_id"]})
+        # Coerce scene_number to string for consistency
+        sn = r.get("scene_number")
+        sn_str = str(sn) if sn is not None and sn != "" else None
         if existing:
             await db.scenes.update_one(
                 {"_id": existing["_id"]},
                 {"$set": {
-                    "scene_number": r["scene_number"],
-                    "image_prompt": r["image_prompt"],
-                    "video_prompt": r["video_prompt"],
+                    "scene_number": sn_str,
+                    "image_prompt": r.get("image_prompt", ""),
+                    "video_prompt": r.get("video_prompt", ""),
                 }},
             )
         else:
             scene = Scene(
                 airtable_id=r.get("airtable_id"),
-                scene_number=r.get("scene_number"),
+                scene_number=sn_str,
                 image_prompt=r.get("image_prompt", ""),
                 video_prompt=r.get("video_prompt", ""),
             )

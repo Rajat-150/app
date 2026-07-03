@@ -48,10 +48,14 @@ def now_iso() -> str:
 class Scene(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     airtable_id: Optional[str] = None
-    scene_number: Optional[str] = None  # accepts string identifiers like "S01-L01-A" or numbers
+    scene_number: Optional[str] = None  # e.g. "S01-L01-A"
     image_prompt: str = ""
     video_prompt: str = ""
-    status: str = "pending"  # pending | image_generated | video_generated | complete
+    airtable_status: str = ""  # status from Airtable (pending, image_generated, video_generated, ...)
+    story_name: str = ""
+    line_text: str = ""
+    duration_sec: Optional[float] = None
+    status: str = "pending"  # local pipeline status
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -126,25 +130,26 @@ async def sync_airtable():
         existing = None
         if r.get("airtable_id"):
             existing = await db.scenes.find_one({"airtable_id": r["airtable_id"]})
-        # Coerce scene_number to string for consistency
         sn = r.get("scene_number")
         sn_str = str(sn) if sn is not None and sn != "" else None
+        duration = r.get("duration_sec")
+        try:
+            duration = float(duration) if duration not in (None, "") else None
+        except (ValueError, TypeError):
+            duration = None
+        common = {
+            "scene_number": sn_str,
+            "image_prompt": r.get("image_prompt", ""),
+            "video_prompt": r.get("video_prompt", ""),
+            "airtable_status": r.get("airtable_status", ""),
+            "story_name": r.get("story_name", ""),
+            "line_text": r.get("line_text", ""),
+            "duration_sec": duration,
+        }
         if existing:
-            await db.scenes.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {
-                    "scene_number": sn_str,
-                    "image_prompt": r.get("image_prompt", ""),
-                    "video_prompt": r.get("video_prompt", ""),
-                }},
-            )
+            await db.scenes.update_one({"_id": existing["_id"]}, {"$set": common})
         else:
-            scene = Scene(
-                airtable_id=r.get("airtable_id"),
-                scene_number=sn_str,
-                image_prompt=r.get("image_prompt", ""),
-                video_prompt=r.get("video_prompt", ""),
-            )
+            scene = Scene(airtable_id=r.get("airtable_id"), **common)
             await db.scenes.insert_one(scene.model_dump())
         upserted += 1
     return {"synced": upserted, "airtable_configured": airtable.is_configured()}

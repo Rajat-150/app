@@ -1,0 +1,73 @@
+version: "3.9"
+
+# Scene Studio — VPS control panel for the automated video pipeline.
+# Run: docker compose up -d
+# Then open http://your-vps:3000
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on: [mongo]
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: scene_studio
+      CORS_ORIGINS: "*"
+      AIRTABLE_API_KEY: ${AIRTABLE_API_KEY:-pat_placeholder_replace_me}
+      AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID:-appXXXXXXXXXXXXXX}
+      AIRTABLE_TABLE_NAME: ${AIRTABLE_TABLE_NAME:-Scenes}
+      AIRTABLE_FIELD_IMAGE_PROMPT: ${AIRTABLE_FIELD_IMAGE_PROMPT:-Image Prompt}
+      AIRTABLE_FIELD_VIDEO_PROMPT: ${AIRTABLE_FIELD_VIDEO_PROMPT:-Video Prompt}
+      AIRTABLE_FIELD_SCENE_NUMBER: ${AIRTABLE_FIELD_SCENE_NUMBER:-Scene Number}
+      N8N_BASE_URL: ${N8N_BASE_URL:-https://n8n.example.com}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-change-me}
+      DATA_DIR: /data
+      IMAGES_DIR: /data/images
+      VIDEOS_DIR: /data/videos
+      PLAYWRIGHT_PROFILE_DIR: /data/playwright-profile
+      REMOTION_PROJECT_DIR: /data/remotion
+      GOOGLE_FLOW_URL: https://labs.google/fx/tools/flow
+      GROK_URL: https://grok.com
+      NOVNC_URL: http://localhost:6080/vnc.html
+      DISPLAY: ":99"
+    volumes:
+      - ./data:/data
+      - ./remotion:/data/remotion
+    ports:
+      - "8001:8001"
+    # For real Playwright + noVNC on the VPS use the "browser" profile instead
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://localhost:8001}
+    restart: unless-stopped
+    depends_on: [backend]
+    ports:
+      - "3000:80"
+
+  # Optional headed browser + noVNC for one-time Google Flow / Grok login.
+  # Bring up with: docker compose --profile browser up -d
+  browser:
+    profiles: ["browser"]
+    image: dorowu/ubuntu-desktop-lxde-vnc:latest
+    restart: unless-stopped
+    environment:
+      RESOLUTION: "1440x900"
+    volumes:
+      - ./data/playwright-profile:/root/.config/google-chrome
+    ports:
+      - "6080:80"  # noVNC web UI
+
+volumes:
+  mongo_data:

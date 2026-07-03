@@ -15,8 +15,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt httpx playwright && \
-    playwright install chromium --with-deps || true
+# emergentintegrations is an Emergent-internal package not on public PyPI — strip it before install
+RUN grep -v -i "emergentintegrations" requirements.txt > /tmp/reqs.txt && \
+    pip install --no-cache-dir -r /tmp/reqs.txt httpx playwright && \
+    (playwright install chromium --with-deps || true)
 
 COPY . .
 

@@ -48,14 +48,16 @@ def now_iso() -> str:
 class Scene(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     airtable_id: Optional[str] = None
-    scene_number: Optional[str] = None  # e.g. "S01-L01-A"
+    scene_number: Optional[str] = None  # shot_id, e.g. "S01-L01-A"
+    scene_id: Optional[str] = None  # e.g. "S01"
     image_prompt: str = ""
     video_prompt: str = ""
-    airtable_status: str = ""  # status from Airtable (pending, image_generated, video_generated, ...)
+    airtable_status: str = ""
     story_name: str = ""
     line_text: str = ""
     duration_sec: Optional[float] = None
-    status: str = "pending"  # local pipeline status
+    sort_index: int = 0  # preserves Airtable order for grouping
+    status: str = "pending"
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -126,7 +128,7 @@ async def sync_airtable():
         logger.exception("Airtable fetch failed")
         raise HTTPException(status_code=502, detail=f"Airtable fetch failed: {e}")
     upserted = 0
-    for r in rows:
+    for idx, r in enumerate(rows):
         existing = None
         if r.get("airtable_id"):
             existing = await db.scenes.find_one({"airtable_id": r["airtable_id"]})
@@ -139,12 +141,14 @@ async def sync_airtable():
             duration = None
         common = {
             "scene_number": sn_str,
+            "scene_id": r.get("scene_id", ""),
             "image_prompt": r.get("image_prompt", ""),
             "video_prompt": r.get("video_prompt", ""),
             "airtable_status": r.get("airtable_status", ""),
             "story_name": r.get("story_name", ""),
             "line_text": r.get("line_text", ""),
             "duration_sec": duration,
+            "sort_index": idx,
         }
         if existing:
             await db.scenes.update_one({"_id": existing["_id"]}, {"$set": common})
@@ -157,8 +161,27 @@ async def sync_airtable():
 
 @api.get("/scenes")
 async def list_scenes():
-    scenes = await db.scenes.find({}, {"_id": 0}).sort("scene_number", 1).to_list(1000)
+    # Preserve Airtable order (sort_index) so the same story stays grouped and shots ascend
+    scenes = await db.scenes.find({}, {"_id": 0}).sort("sort_index", 1).to_list(10000)
     return scenes
+
+
+@api.post("/images/generate-bulk")
+async def generate_images_bulk(payload: Dict[str, Any]):
+    scene_ids = payload.get("scene_ids") or []
+    if not scene_ids:
+        raise HTTPException(400, "scene_ids required")
+    queued = []
+    for sid in scene_ids:
+        scene = await db.scenes.find_one({"id": sid}, {"_id": 0})
+        if not scene:
+            continue
+        prompt = scene.get("image_prompt", "")
+        job = JobRecord(kind="image", scene_id=sid, prompt=prompt)
+        await db.jobs.insert_one(job.model_dump())
+        asyncio.create_task(_run_image_job(job.id, sid, prompt))
+        queued.append(job.id)
+    return {"queued": len(queued), "job_ids": queued}
 
 
 @api.post("/scenes")

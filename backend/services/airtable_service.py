@@ -12,6 +12,7 @@ class AirtableService:
         self.f_image = os.environ.get("AIRTABLE_FIELD_IMAGE_PROMPT", "image_prompt")
         self.f_video = os.environ.get("AIRTABLE_FIELD_VIDEO_PROMPT", "video_prompt")
         self.f_scene = os.environ.get("AIRTABLE_FIELD_SCENE_NUMBER", "shot_id")
+        self.f_scene_id = os.environ.get("AIRTABLE_FIELD_SCENE_ID", "scene_id")
         self.f_status = os.environ.get("AIRTABLE_FIELD_STATUS", "Status")
         self.f_story = os.environ.get("AIRTABLE_FIELD_STORY_NAME", "Story_name")
         self.f_line = os.environ.get("AIRTABLE_FIELD_LINE", "full_line")
@@ -47,6 +48,7 @@ class AirtableService:
                     results.append({
                         "airtable_id": r["id"],
                         "scene_number": fields.get(self.f_scene),
+                        "scene_id": fields.get(self.f_scene_id, ""),
                         "image_prompt": fields.get(self.f_image, ""),
                         "video_prompt": fields.get(self.f_video, ""),
                         "airtable_status": fields.get(self.f_status, ""),
@@ -65,6 +67,7 @@ class AirtableService:
             {
                 "airtable_id": f"demo-{i}",
                 "scene_number": f"S01-L{i:02d}-A",
+                "scene_id": "S01",
                 "image_prompt": f"Scene {i}: A cinematic wide shot of a neon-lit cyberpunk alley at midnight, rain-slicked pavement.",
                 "video_prompt": f"Scene {i}: Slow dolly-in with subtle rain motion, steam rising from vents.",
                 "airtable_status": "pending" if i > 2 else "video_generated",

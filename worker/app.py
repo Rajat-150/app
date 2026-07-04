@@ -27,8 +27,8 @@ async def health():
 @app.post("/automate/image")
 async def automate_image(req: ImageGenRequest):
     result = await flow_generate_image(req.prompt, req.scene_key or "img", req.settings)
-    if not result.get("ok"):
-        raise HTTPException(500, detail=result)
+    # Always return 200 with the result dict — the backend inspects `ok` field.
+    # This avoids losing the error detail when FastAPI wraps a 500 body poorly.
     return result
 
 

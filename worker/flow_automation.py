@@ -58,25 +58,56 @@ async def dump_debug(page: Optional[Page], tag: str) -> str:
     return str(png)
 
 
-async def open_or_create_today_project(page: Page) -> None:
-    name = today_project_name()
-    tile_sel = S.PROJECT_TILE_BY_NAME.replace("{name}", name)
-    try:
-        await page.locator(tile_sel).first.click(timeout=5000)
-        await page.wait_for_load_state("networkidle", timeout=15000)
+async def ensure_in_project(page: Page) -> None:
+    """Land on a Google Flow project page with the prompt bar accessible.
+
+    Strategy:
+      - If URL already contains /project/, we're good.
+      - Otherwise try to click an existing project tile.
+      - Only if no tile exists, click a *specifically-labelled* 'New project' button
+        (never a generic 'Create', which sometimes matches 'Create character').
+      - Finally, press Escape a few times to dismiss any modal overlay.
+    """
+    for _ in range(4):
+        await page.keyboard.press("Escape")
+        await asyncio.sleep(0.2)
+
+    if "/project/" in page.url:
+        await asyncio.sleep(0.6)
         return
-    except (PWTimeout, Exception):
+
+    # Look for existing project tile (href-based, most stable)
+    try:
+        tile = page.locator('a[href*="/project/"]').first
+        await tile.click(timeout=6000)
+        await page.wait_for_load_state("networkidle", timeout=15000)
+        for _ in range(4):
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.2)
+        return
+    except Exception:
         pass
 
-    if not await _try(page, S.NEW_PROJECT_BUTTON, "click", timeout=10000):
-        await dump_debug(page, "new_project_button_missing")
-        raise RuntimeError("Could not find 'New project' button — update flow_selectors.NEW_PROJECT_BUTTON")
+    # Fall back: click a strictly-named 'New project' button
+    for sel in [
+        'button:has-text("New project")',
+        'button:has-text("New Project")',
+        'button[aria-label="New project"]',
+    ]:
+        if await _try(page, sel, "click", timeout=4000):
+            await page.wait_for_load_state("networkidle", timeout=15000)
+            for _ in range(4):
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.2)
+            return
 
-    await asyncio.sleep(1.2)
-    filled = await _try(page, S.PROJECT_NAME_INPUT, "fill", timeout=4000, value=name)
-    if filled:
-        await _try(page, S.CREATE_CONFIRM_BUTTON, "click", timeout=4000)
-    await page.wait_for_load_state("networkidle", timeout=20000)
+    await dump_debug(page, "no_project")
+    raise RuntimeError("Could not enter any project — none exist and 'New project' button not found")
+
+
+async def open_or_create_today_project(page: Page) -> None:
+    """Backward-compatible alias — routing to the safer ensure_in_project()."""
+    await ensure_in_project(page)
 
 
 async def apply_settings(page: Page, aspect: str, count: str) -> None:
@@ -94,26 +125,47 @@ async def apply_settings(page: Page, aspect: str, count: str) -> None:
 
 
 async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
-    # The prompt input is at the BOTTOM. Search-assets is a similar element at the TOP.
-    # We use JS to pick the last visible textarea/contenteditable, then focus it.
+    # Dismiss any overlay modals first (asset picker, character sheet, etc)
+    for _ in range(4):
+        await page.keyboard.press("Escape")
+        await asyncio.sleep(0.2)
+
     focus_js = """
     () => {
-      const els = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'))
-        .filter(el => el.offsetParent && el.getBoundingClientRect().height > 20);
-      // The prompt is at the bottom of the page — pick the one with the largest 'top' coordinate.
-      if (!els.length) return { ok: false };
-      els.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
-      const target = els[0];
+      const cands = Array.from(document.querySelectorAll(
+        'textarea, [contenteditable="true"], input[type="text"], input:not([type])'
+      ));
+      const visible = cands.filter(el => {
+        if (!el.offsetParent) return false;
+        const r = el.getBoundingClientRect();
+        if (r.height < 20 || r.width < 100) return false;
+        // Exclude anything labelled 'search' — that's Google Flow's asset search bar.
+        const meta = ((el.placeholder || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-placeholder') || '')).toLowerCase();
+        if (/search|find|look for/.test(meta)) return false;
+        return true;
+      });
+      const totalOnPage = cands.length;
+      if (!visible.length) return { ok: false, count: totalOnPage };
+      // Prefer the bottom-most (highest .top means lowest on screen)
+      visible.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+      const target = visible[0];
       target.focus();
+      target.click();
       target.scrollIntoView({ block: 'center' });
-      return { ok: true, tag: target.tagName, editable: target.isContentEditable };
+      return {
+        ok: true,
+        tag: target.tagName,
+        placeholder: target.placeholder || target.getAttribute('aria-label') || target.getAttribute('data-placeholder') || '',
+        top: target.getBoundingClientRect().top,
+        totalOnPage,
+      };
     }
     """
     r = await page.evaluate(focus_js)
+    logger.info("focus attempt: %s", r)
     if not r.get("ok"):
         await dump_debug(page, "prompt_input_missing")
-        raise RuntimeError("Could not find any prompt input on the page")
-    logger.info("focused prompt input: %s", r)
+        raise RuntimeError(f"Could not find prompt input (visible candidates on page: {r.get('count')})")
     await asyncio.sleep(0.4)
 
     await page.keyboard.press("Control+A")
@@ -121,7 +173,7 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
     for chunk in [prompt[i:i+400] for i in range(0, len(prompt), 400)]:
         await page.keyboard.type(chunk, delay=5)
 
-    await asyncio.sleep(0.8)  # let React see the input
+    await asyncio.sleep(0.8)
 
     # Strategy 1: try direct selector (skipped since we now use JS strategy first)
     # Strategy 2 (most reliable for Google Flow): find the submit button

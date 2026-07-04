@@ -26,6 +26,11 @@ RUN apt-get update && apt-get install -y wget gnupg \
     && apt-get update && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
+# Wrapper: running as root inside a container needs --no-sandbox for the *interactive* Chrome
+# launched from a terminal inside noVNC. Playwright already passes --no-sandbox in code.
+RUN printf '#!/bin/sh\nexec /opt/google/chrome/google-chrome --no-sandbox --disable-dev-shm-usage --user-data-dir=/data/playwright-profile "$@"\n' > /usr/local/bin/google-chrome \
+    && chmod +x /usr/local/bin/google-chrome
+
 COPY . /app
 
 # supervisord runs Xvfb + x11vnc + websockify(noVNC) + fluxbox WM + fastapi worker

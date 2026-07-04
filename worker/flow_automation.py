@@ -103,9 +103,20 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
     for chunk in [prompt[i:i+400] for i in range(0, len(prompt), 400)]:
         await page.keyboard.type(chunk, delay=5)
 
-    if not await _try(page, S.GENERATE_BUTTON, "click", timeout=8000):
-        await dump_debug(page, "generate_button_missing")
-        raise RuntimeError("Generate button not found — update flow_selectors.GENERATE_BUTTON")
+    # Preferred: click the Generate button
+    if await _try(page, S.GENERATE_BUTTON, "click", timeout=6000):
+        return
+
+    # Fallback 1: many AI prompt UIs submit on Enter or Ctrl+Enter.
+    logger.info("Generate button selector didn't match, trying Enter fallback")
+    await page.keyboard.press("Enter")
+    await asyncio.sleep(1.5)
+    # If nothing happened, try Ctrl+Enter
+    await page.keyboard.press("Control+Enter")
+    await asyncio.sleep(1.5)
+
+    # Give the caller a chance to see if the image request actually kicked off — the outer
+    # wait_for_and_download_image will time out with a real error if it didn't.
 
 
 async def wait_for_and_download_image(page: Page, scene_key: str) -> str:

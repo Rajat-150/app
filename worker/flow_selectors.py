@@ -17,8 +17,22 @@ CREATE_CONFIRM_BUTTON = 'button:has-text("Create"), button:has-text("Continue")'
 
 # --- Inside a project — prompt page ---
 # Google Flow uses a large textarea or contenteditable div for the prompt
-PROMPT_INPUT = 'textarea, div[contenteditable="true"][role="textbox"]'
-GENERATE_BUTTON = 'button:has-text("Generate"), button[aria-label*="Generate" i], button:has-text("Run")'
+PROMPT_INPUT = 'textarea, div[contenteditable="true"][role="textbox"], div[contenteditable="true"]'
+# Generate is often an arrow/send icon, not a text button. Try many patterns.
+GENERATE_BUTTON = (
+    'button:has-text("Generate"), '
+    'button:has-text("Create"), '
+    'button:has-text("Run"), '
+    'button:has-text("Submit"), '
+    'button[aria-label*="Generate" i], '
+    'button[aria-label*="Send" i], '
+    'button[aria-label*="Submit" i], '
+    'button[type="submit"], '
+    'button[data-testid*="submit" i], '
+    'button[data-testid*="generate" i], '
+    'button:has(svg[data-icon*="send" i]), '
+    'button:has(svg[data-icon*="arrow" i])'
+)
 
 # --- Settings gear (top-right) that opens Agent Settings ---
 SETTINGS_GEAR = 'button[aria-label*="Settings" i], button:has(svg[data-icon*="settings" i])'

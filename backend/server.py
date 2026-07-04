@@ -206,10 +206,20 @@ async def delete_scene(scene_id: str):
 async def _run_image_job(job_id: str, scene_id: str, prompt: str):
     await db.jobs.update_one({"id": job_id}, {"$set": {"status": "running", "updated_at": now_iso()}})
     try:
-        result_path = await automation.generate_image_google_flow(prompt)
+        scene = await db.scenes.find_one({"id": scene_id}, {"_id": 0}) or {}
+        scene_key = scene.get("scene_key") or scene.get("scene_number") or scene_id[:8]
+        result_path = await automation.generate_image_google_flow(
+            prompt, scene_key=scene_key, settings={},
+        )
         if result_path:
             filename = Path(result_path).name
-            asset = ImageAsset(scene_id=scene_id, filename=filename, prompt=prompt, source="auto")
+            asset = ImageAsset(
+                scene_id=scene_id,
+                scene_key=scene.get("scene_key"),
+                filename=filename,
+                prompt=prompt,
+                source="auto",
+            )
             await db.images.insert_one(asset.model_dump())
             await db.scenes.update_one({"id": scene_id}, {"$set": {"status": "image_generated"}})
             await db.jobs.update_one(
@@ -221,7 +231,7 @@ async def _run_image_job(job_id: str, scene_id: str, prompt: str):
                 {"id": job_id},
                 {"$set": {
                     "status": "pending_manual",
-                    "error": "Automation unavailable or failed. Please upload the generated image manually.",
+                    "error": "Worker unavailable or Playwright automation failed. Upload the image manually via the Generate modal.",
                     "updated_at": now_iso(),
                 }},
             )

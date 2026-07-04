@@ -1,7 +1,6 @@
 # Scene Studio — VPS control panel for the automated video pipeline.
 # Run: docker compose up -d
-# Then open http://your-vps:3000
-
+# For phase-2 automation, also: docker compose --profile automation up -d worker
 services:
   mongo:
     image: mongo:7
@@ -22,26 +21,29 @@ services:
       AIRTABLE_API_KEY: ${AIRTABLE_API_KEY:-pat_placeholder_replace_me}
       AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID:-appXXXXXXXXXXXXXX}
       AIRTABLE_TABLE_NAME: ${AIRTABLE_TABLE_NAME:-Scenes}
-      AIRTABLE_FIELD_IMAGE_PROMPT: ${AIRTABLE_FIELD_IMAGE_PROMPT:-Image Prompt}
-      AIRTABLE_FIELD_VIDEO_PROMPT: ${AIRTABLE_FIELD_VIDEO_PROMPT:-Video Prompt}
-      AIRTABLE_FIELD_SCENE_NUMBER: ${AIRTABLE_FIELD_SCENE_NUMBER:-Scene Number}
+      AIRTABLE_FIELD_IMAGE_PROMPT: ${AIRTABLE_FIELD_IMAGE_PROMPT:-image_prompt}
+      AIRTABLE_FIELD_VIDEO_PROMPT: ${AIRTABLE_FIELD_VIDEO_PROMPT:-video_prompt}
+      AIRTABLE_FIELD_SCENE_NUMBER: ${AIRTABLE_FIELD_SCENE_NUMBER:-shot_id}
+      AIRTABLE_FIELD_SCENE_ID: ${AIRTABLE_FIELD_SCENE_ID:-scene_id}
+      AIRTABLE_FIELD_SCENE_KEY: ${AIRTABLE_FIELD_SCENE_KEY:-Scene_number}
+      AIRTABLE_FIELD_STATUS: ${AIRTABLE_FIELD_STATUS:-Status}
+      AIRTABLE_FIELD_STORY_NAME: ${AIRTABLE_FIELD_STORY_NAME:-Story_name}
+      AIRTABLE_FIELD_LINE: ${AIRTABLE_FIELD_LINE:-full_line}
+      AIRTABLE_FIELD_DURATION: ${AIRTABLE_FIELD_DURATION:-estimated_duration_sec}
       N8N_BASE_URL: ${N8N_BASE_URL:-https://n8n.example.com}
       N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-change-me}
+      WORKER_URL: http://worker:8002
       DATA_DIR: /data
       IMAGES_DIR: /data/images
       VIDEOS_DIR: /data/videos
       PLAYWRIGHT_PROFILE_DIR: /data/playwright-profile
       REMOTION_PROJECT_DIR: /data/remotion
-      GOOGLE_FLOW_URL: https://labs.google/fx/tools/flow
-      GROK_URL: https://grok.com
-      NOVNC_URL: http://localhost:6080/vnc.html
-      DISPLAY: ":99"
+      NOVNC_URL: ${NOVNC_URL:-}
     volumes:
       - ./data:/data
       - ./remotion:/data/remotion
     ports:
       - "8001:8001"
-    # For real Playwright + noVNC on the VPS use the "browser" profile instead
 
   frontend:
     build:
@@ -49,23 +51,31 @@ services:
       dockerfile: Dockerfile
       args:
         REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://localhost:8001}
+        REACT_APP_NOVNC_URL: ${NOVNC_URL:-}
     restart: unless-stopped
     depends_on: [backend]
     ports:
       - "8080:80"
 
-  # Optional headed browser + noVNC for one-time Google Flow / Grok login.
-  # Bring up with: docker compose --profile browser up -d
-  browser:
-    profiles: ["browser"]
-    image: dorowu/ubuntu-desktop-lxde-vnc:latest
+  # Automation worker — Playwright + Chrome + Xvfb + noVNC.
+  # Bring up with: docker compose --profile automation up -d worker
+  # Then open http://<vps>:6080 to log into Google Flow (one time).
+  worker:
+    profiles: ["automation"]
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      RESOLUTION: "1440x900"
+      PLAYWRIGHT_PROFILE_DIR: /data/playwright-profile
+      IMAGES_DIR: /data/images
+      SCREENSHOTS_DIR: /data/screenshots
     volumes:
-      - ./data/playwright-profile:/root/.config/google-chrome
+      - ./data:/data
     ports:
-      - "6080:80"  # noVNC web UI
+      - "6080:6080"   # noVNC web UI
+      # 8002 is internal-only; backend talks to it over the docker network.
+    shm_size: "2gb"   # Chrome needs this
 
 volumes:
   mongo_data:

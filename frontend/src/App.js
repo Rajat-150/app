@@ -7,6 +7,7 @@ import Images from "@/pages/Images";
 import Videos from "@/pages/Videos";
 import Render from "@/pages/Render";
 import Jobs from "@/pages/Jobs";
+import BrowserLogin from "@/pages/BrowserLogin";
 import Settings from "@/pages/Settings";
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
               <Route path="/images" element={<Images />} />
               <Route path="/videos" element={<Videos />} />
               <Route path="/render" element={<Render />} />
+              <Route path="/browser" element={<BrowserLogin />} />
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

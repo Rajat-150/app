@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Film, Image as ImageIcon, Video, Terminal, Settings, Activity, Zap } from "lucide-react";
+import { LayoutDashboard, Film, Image as ImageIcon, Video, Terminal, Settings, Activity, Zap, Monitor } from "lucide-react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
@@ -7,6 +7,7 @@ const items = [
   { to: "/images", label: "Images", icon: ImageIcon, testId: "nav-images" },
   { to: "/videos", label: "Videos", icon: Video, testId: "nav-videos" },
   { to: "/render", label: "Render", icon: Zap, testId: "nav-render" },
+  { to: "/browser", label: "Browser Login", icon: Monitor, testId: "nav-browser" },
   { to: "/jobs", label: "Jobs", icon: Activity, testId: "nav-jobs" },
   { to: "/settings", label: "Settings", icon: Settings, testId: "nav-settings" },
 ];

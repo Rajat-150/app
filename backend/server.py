@@ -208,11 +208,11 @@ async def _run_image_job(job_id: str, scene_id: str, prompt: str):
     try:
         scene = await db.scenes.find_one({"id": scene_id}, {"_id": 0}) or {}
         scene_key = scene.get("scene_key") or scene.get("scene_number") or scene_id[:8]
-        result_path = await automation.generate_image_google_flow(
+        result = await automation.generate_image_google_flow(
             prompt, scene_key=scene_key, settings={},
         )
-        if result_path:
-            filename = Path(result_path).name
+        if result.get("ok") and result.get("path"):
+            filename = Path(result["path"]).name
             asset = ImageAsset(
                 scene_id=scene_id,
                 scene_key=scene.get("scene_key"),
@@ -227,16 +227,20 @@ async def _run_image_job(job_id: str, scene_id: str, prompt: str):
                 {"$set": {"status": "done", "result_asset_id": asset.id, "updated_at": now_iso()}},
             )
         else:
+            err = result.get("error") or "unknown worker error"
+            debug = result.get("debug_screenshot")
+            if debug:
+                err = f"{err}  [screenshot: {debug}]"
             await db.jobs.update_one(
                 {"id": job_id},
                 {"$set": {
-                    "status": "pending_manual",
-                    "error": "Worker unavailable or Playwright automation failed. Upload the image manually via the Generate modal.",
+                    "status": "failed",
+                    "error": err,
                     "updated_at": now_iso(),
                 }},
             )
     except Exception as e:
-        await db.jobs.update_one({"id": job_id}, {"$set": {"status": "failed", "error": str(e), "updated_at": now_iso()}})
+        await db.jobs.update_one({"id": job_id}, {"$set": {"status": "failed", "error": f"{type(e).__name__}: {e}", "updated_at": now_iso()}})
 
 
 @api.post("/images/generate")

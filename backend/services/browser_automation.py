@@ -34,10 +34,13 @@ class BrowserAutomation:
         prompt: str,
         scene_key: Optional[str] = None,
         settings: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
-        """Ask the worker to run Playwright against Google Flow. Returns path or None."""
+    ) -> Dict[str, Any]:
+        """Ask the worker to run Playwright against Google Flow.
+
+        Returns {ok, path?, error?, debug_screenshot?}.
+        """
         if not WORKER_URL:
-            return None
+            return {"ok": False, "error": "WORKER_URL not configured on backend"}
         Path(IMAGES_DIR).mkdir(parents=True, exist_ok=True)
         try:
             async with httpx.AsyncClient(timeout=600.0) as client:
@@ -50,13 +53,23 @@ class BrowserAutomation:
                     },
                 )
                 if r.status_code != 200:
-                    print(f"[worker] error {r.status_code}: {r.text[:500]}")
-                    return None
+                    # FastAPI wraps detail in {"detail": ...} when we raise HTTPException(500, detail=result)
+                    try:
+                        payload = r.json()
+                        detail = payload.get("detail", payload)
+                        if isinstance(detail, dict):
+                            return {"ok": False, **detail}
+                        return {"ok": False, "error": str(detail)}
+                    except Exception:
+                        return {"ok": False, "error": f"worker HTTP {r.status_code}: {r.text[:500]}"}
                 data = r.json()
-                return data.get("path") if data.get("ok") else None
+                return data
+        except httpx.ConnectError as e:
+            return {"ok": False, "error": f"cannot reach worker at {WORKER_URL}: {e}"}
+        except httpx.TimeoutException:
+            return {"ok": False, "error": "worker timed out after 10 min (likely stuck on a Google Flow selector — check /data/screenshots/)"}
         except Exception as e:
-            print(f"[worker] request failed: {e}")
-            return None
+            return {"ok": False, "error": f"unexpected: {type(e).__name__}: {e}"}
 
     async def generate_video_grok(self, prompt: str, image_path: Optional[str] = None) -> Optional[str]:
         # Grok automation to be added in a follow-up (same pattern as flow).

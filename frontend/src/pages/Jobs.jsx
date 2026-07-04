@@ -39,7 +39,7 @@ export default function Jobs() {
                   </span>
                 </td>
                 <td className="px-4 py-3 max-w-lg"><div className="line-clamp-1 text-xs" style={{ color: "var(--text-secondary)" }}>{j.prompt}</div>
-                  {j.error && <div className="line-clamp-1 text-xs mt-1" style={{ color: "#f87171" }}>{j.error}</div>}
+                  {j.error && <div className="text-xs mt-1 font-mono whitespace-pre-wrap break-all" style={{ color: "#f87171" }}>{j.error}</div>}
                 </td>
                 <td className="px-4 py-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>{new Date(j.updated_at).toLocaleTimeString()}</td>
               </tr>

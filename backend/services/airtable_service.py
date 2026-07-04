@@ -13,6 +13,7 @@ class AirtableService:
         self.f_video = os.environ.get("AIRTABLE_FIELD_VIDEO_PROMPT", "video_prompt")
         self.f_scene = os.environ.get("AIRTABLE_FIELD_SCENE_NUMBER", "shot_id")
         self.f_scene_id = os.environ.get("AIRTABLE_FIELD_SCENE_ID", "scene_id")
+        self.f_scene_key = os.environ.get("AIRTABLE_FIELD_SCENE_KEY", "Scene_number")
         self.f_status = os.environ.get("AIRTABLE_FIELD_STATUS", "Status")
         self.f_story = os.environ.get("AIRTABLE_FIELD_STORY_NAME", "Story_name")
         self.f_line = os.environ.get("AIRTABLE_FIELD_LINE", "full_line")
@@ -49,6 +50,7 @@ class AirtableService:
                         "airtable_id": r["id"],
                         "scene_number": fields.get(self.f_scene),
                         "scene_id": fields.get(self.f_scene_id, ""),
+                        "scene_key": fields.get(self.f_scene_key, ""),
                         "image_prompt": fields.get(self.f_image, ""),
                         "video_prompt": fields.get(self.f_video, ""),
                         "airtable_status": fields.get(self.f_status, ""),

@@ -50,13 +50,14 @@ class Scene(BaseModel):
     airtable_id: Optional[str] = None
     scene_number: Optional[str] = None  # shot_id, e.g. "S01-L01-A"
     scene_id: Optional[str] = None  # e.g. "S01"
+    scene_key: Optional[str] = None  # unique Airtable Scene_number key, e.g. "Sikkim_covert_opS01-L01-A"
     image_prompt: str = ""
     video_prompt: str = ""
     airtable_status: str = ""
     story_name: str = ""
     line_text: str = ""
     duration_sec: Optional[float] = None
-    sort_index: int = 0  # preserves Airtable order for grouping
+    sort_index: int = 0
     status: str = "pending"
     created_at: str = Field(default_factory=now_iso)
 
@@ -64,10 +65,12 @@ class Scene(BaseModel):
 class ImageAsset(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     scene_id: str
+    scene_key: Optional[str] = None
     filename: str
     prompt: str = ""
     selected: bool = False
     source: str = "auto"  # auto | manual
+    settings: Dict[str, Any] = Field(default_factory=dict)  # captured aspect/model choices
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -142,6 +145,7 @@ async def sync_airtable():
         common = {
             "scene_number": sn_str,
             "scene_id": r.get("scene_id", ""),
+            "scene_key": r.get("scene_key", ""),
             "image_prompt": r.get("image_prompt", ""),
             "video_prompt": r.get("video_prompt", ""),
             "airtable_status": r.get("airtable_status", ""),
@@ -241,16 +245,39 @@ async def generate_image(payload: Dict[str, Any]):
 
 
 @api.post("/images/upload")
-async def upload_image(scene_id: str = Form(...), file: UploadFile = File(...)):
+async def upload_image(
+    scene_id: str = Form(...),
+    file: UploadFile = File(...),
+    settings: Optional[str] = Form(None),
+):
+    import re
+    import json
     scene = await db.scenes.find_one({"id": scene_id}, {"_id": 0})
     if not scene:
         raise HTTPException(404, "scene not found")
     ext = Path(file.filename or "img.png").suffix or ".png"
-    filename = f"img_{uuid.uuid4().hex}{ext}"
+    # Prefer scene_key (Airtable Scene_number) for filename; fall back to shot_id
+    key = scene.get("scene_key") or scene.get("scene_number") or scene_id[:8]
+    # sanitize filesystem-unsafe chars
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(key))
+    filename = f"{safe}_{uuid.uuid4().hex[:6]}{ext}"
     fpath = IMAGES_DIR / filename
     with fpath.open("wb") as f:
         shutil.copyfileobj(file.file, f)
-    asset = ImageAsset(scene_id=scene_id, filename=filename, prompt=scene.get("image_prompt", ""), source="manual")
+    parsed_settings = {}
+    if settings:
+        try:
+            parsed_settings = json.loads(settings)
+        except Exception:
+            parsed_settings = {}
+    asset = ImageAsset(
+        scene_id=scene_id,
+        scene_key=scene.get("scene_key"),
+        filename=filename,
+        prompt=scene.get("image_prompt", ""),
+        source="manual",
+        settings=parsed_settings,
+    )
     await db.images.insert_one(asset.model_dump())
     await db.scenes.update_one({"id": scene_id}, {"$set": {"status": "image_generated"}})
     return asset

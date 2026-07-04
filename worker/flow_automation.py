@@ -94,29 +94,92 @@ async def apply_settings(page: Page, aspect: str, count: str) -> None:
 
 
 async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
-    if not await _try(page, S.PROMPT_INPUT, "click", timeout=15000):
+    # The prompt input is at the BOTTOM. Search-assets is a similar element at the TOP.
+    # We use JS to pick the last visible textarea/contenteditable, then focus it.
+    focus_js = """
+    () => {
+      const els = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'))
+        .filter(el => el.offsetParent && el.getBoundingClientRect().height > 20);
+      // The prompt is at the bottom of the page — pick the one with the largest 'top' coordinate.
+      if (!els.length) return { ok: false };
+      els.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+      const target = els[0];
+      target.focus();
+      target.scrollIntoView({ block: 'center' });
+      return { ok: true, tag: target.tagName, editable: target.isContentEditable };
+    }
+    """
+    r = await page.evaluate(focus_js)
+    if not r.get("ok"):
         await dump_debug(page, "prompt_input_missing")
-        raise RuntimeError("Prompt input not found — update flow_selectors.PROMPT_INPUT")
+        raise RuntimeError("Could not find any prompt input on the page")
+    logger.info("focused prompt input: %s", r)
+    await asyncio.sleep(0.4)
 
     await page.keyboard.press("Control+A")
     await page.keyboard.press("Delete")
     for chunk in [prompt[i:i+400] for i in range(0, len(prompt), 400)]:
         await page.keyboard.type(chunk, delay=5)
 
-    # Preferred: click the Generate button
-    if await _try(page, S.GENERATE_BUTTON, "click", timeout=6000):
+    await asyncio.sleep(0.8)  # let React see the input
+
+    # Strategy 1: try direct selector (skipped since we now use JS strategy first)
+    # Strategy 2 (most reliable for Google Flow): find the submit button
+    # near/right of the visible prompt input via JavaScript. The button is an
+    # icon-only <button> whose closest ancestor <form>/<div> also contains the
+    # textarea we just typed into.
+    js = """
+    () => {
+      const inputs = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'))
+        .filter(el => el.offsetParent);
+      // Use the input with text (i.e. the one we just filled)
+      const filled = inputs.find(el => (el.value || el.textContent || '').length > 5) || inputs[inputs.length - 1];
+      if (!filled) return { ok: false, reason: 'no input found' };
+
+      // Walk up ancestors looking for a container that also holds a button
+      let node = filled;
+      for (let i = 0; i < 8 && node; i++) {
+        node = node.parentElement;
+        if (!node) break;
+        const btns = Array.from(node.querySelectorAll('button')).filter(b => b.offsetParent && !b.disabled);
+        if (btns.length === 0) continue;
+
+        // Score candidates: prefer aria-label matches, then icon-only buttons on the RIGHT
+        const scored = btns.map(b => {
+          const label = (b.getAttribute('aria-label') || '').toLowerCase();
+          const text = (b.innerText || '').trim().toLowerCase();
+          let score = 0;
+          if (/generat|submit|send|create|run|arrow/.test(label)) score += 100;
+          if (/generat|submit|send|run/.test(text)) score += 60;
+          if (b.type === 'submit') score += 40;
+          // Icon-only (svg with no text)
+          if (b.children.length === 1 && b.children[0].tagName === 'svg' && !text) score += 30;
+          // Prefer rightmost button
+          const rect = b.getBoundingClientRect();
+          score += rect.right / 100;
+          return { b, score, label, text, rect };
+        });
+        scored.sort((x, y) => y.score - x.score);
+        const winner = scored[0];
+        if (winner && winner.score > 20) {
+          winner.b.click();
+          return { ok: true, label: winner.label, text: winner.text, ancestorDepth: i };
+        }
+      }
+      return { ok: false, reason: 'no button found near prompt' };
+    }
+    """
+    result = await page.evaluate(js)
+    logger.info("JS-click result: %s", result)
+    if result.get("ok"):
         return
 
-    # Fallback 1: many AI prompt UIs submit on Enter or Ctrl+Enter.
-    logger.info("Generate button selector didn't match, trying Enter fallback")
-    await page.keyboard.press("Enter")
-    await asyncio.sleep(1.5)
-    # If nothing happened, try Ctrl+Enter
+    # Strategy 3: keyboard fallbacks
+    logger.info("falling back to keyboard shortcuts")
     await page.keyboard.press("Control+Enter")
     await asyncio.sleep(1.5)
-
-    # Give the caller a chance to see if the image request actually kicked off — the outer
-    # wait_for_and_download_image will time out with a real error if it didn't.
+    await page.keyboard.press("Enter")
+    await asyncio.sleep(1.5)
 
 
 async def wait_for_and_download_image(page: Page, scene_key: str) -> str:

@@ -139,6 +139,24 @@ async def wait_for_and_download_image(page: Page, scene_key: str) -> str:
 async def generate_image(prompt: str, scene_key: str, settings: Dict[str, Any]) -> Dict[str, Any]:
     """Robust wrapper — never lets an unhandled exception escape."""
     Path(PROFILE_DIR).mkdir(parents=True, exist_ok=True)
+    # Clean stale SingletonLock files from any previous Chrome session that didn't
+    # exit cleanly (happens after manual noVNC login). Chrome refuses to launch otherwise.
+    for lock in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        try:
+            (Path(PROFILE_DIR) / lock).unlink()
+            logger.info("removed stale %s", lock)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning("could not remove %s: %s", lock, e)
+    # Kill any orphaned Chrome / chromedriver processes that may still be holding the profile
+    try:
+        import subprocess
+        subprocess.run(["pkill", "-f", "chrome"], check=False, timeout=5)
+        await asyncio.sleep(0.5)
+    except Exception:
+        pass
+
     context = None
     page = None
     try:

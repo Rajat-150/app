@@ -175,50 +175,75 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
 
     await asyncio.sleep(0.8)
 
-    # Strategy 1: try direct selector (skipped since we now use JS strategy first)
-    # Strategy 2 (most reliable for Google Flow): find the submit button
-    # near/right of the visible prompt input via JavaScript. The button is an
-    # icon-only <button> whose closest ancestor <form>/<div> also contains the
-    # textarea we just typed into.
+    # Strategy 2 (most reliable for Google Flow): find the submit button by GEOMETRY,
+    # not DOM structure — pick the button closest to the right edge of the input we
+    # just filled (which is the → arrow button).
     js = """
     () => {
-      const inputs = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'))
-        .filter(el => el.offsetParent);
-      // Use the input with text (i.e. the one we just filled)
-      const filled = inputs.find(el => (el.value || el.textContent || '').length > 5) || inputs[inputs.length - 1];
-      if (!filled) return { ok: false, reason: 'no input found' };
-
-      // Walk up ancestors looking for a container that also holds a button
-      let node = filled;
-      for (let i = 0; i < 8 && node; i++) {
-        node = node.parentElement;
-        if (!node) break;
-        const btns = Array.from(node.querySelectorAll('button')).filter(b => b.offsetParent && !b.disabled);
-        if (btns.length === 0) continue;
-
-        // Score candidates: prefer aria-label matches, then icon-only buttons on the RIGHT
-        const scored = btns.map(b => {
-          const label = (b.getAttribute('aria-label') || '').toLowerCase();
-          const text = (b.innerText || '').trim().toLowerCase();
-          let score = 0;
-          if (/generat|submit|send|create|run|arrow/.test(label)) score += 100;
-          if (/generat|submit|send|run/.test(text)) score += 60;
-          if (b.type === 'submit') score += 40;
-          // Icon-only (svg with no text)
-          if (b.children.length === 1 && b.children[0].tagName === 'svg' && !text) score += 30;
-          // Prefer rightmost button
-          const rect = b.getBoundingClientRect();
-          score += rect.right / 100;
-          return { b, score, label, text, rect };
+      // Find the filled input (visible, has text, bottom-most, not a search bar)
+      const cands = Array.from(document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"], input:not([type])'))
+        .filter(el => {
+          if (!el.offsetParent) return false;
+          const meta = ((el.placeholder || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+          if (/search|find/.test(meta)) return false;
+          const v = el.value || el.textContent || '';
+          return v.trim().length > 3;
         });
-        scored.sort((x, y) => y.score - x.score);
-        const winner = scored[0];
-        if (winner && winner.score > 20) {
-          winner.b.click();
-          return { ok: true, label: winner.label, text: winner.text, ancestorDepth: i };
-        }
-      }
-      return { ok: false, reason: 'no button found near prompt' };
+      if (!cands.length) return { ok: false, reason: 'no filled input' };
+      cands.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+      const input = cands[0];
+      const ir = input.getBoundingClientRect();
+
+      // All visible non-disabled buttons anywhere on the page
+      const allBtns = Array.from(document.querySelectorAll('button, [role="button"]'))
+        .filter(b => b.offsetParent && !b.disabled);
+
+      // Score each button by proximity to input's right edge, vertical alignment,
+      // and icon-button-ness. Small buttons with just an svg are strong candidates.
+      const scored = allBtns.map(b => {
+        const r = b.getBoundingClientRect();
+        // Must overlap vertically with input (within +/- 120px of input center)
+        const inputCy = ir.top + ir.height / 2;
+        const btnCy = r.top + r.height / 2;
+        const vDist = Math.abs(inputCy - btnCy);
+        // Must be to the right of the input's left edge (or below-right)
+        const isRight = r.left >= ir.left - 10;
+        // Distance from button center to input's right edge
+        const hDist = Math.abs(r.left - ir.right);
+        // Icon-only heuristic
+        const text = (b.innerText || '').trim();
+        const iconOnly = text.length === 0 && b.querySelector('svg') !== null;
+        const areaSmall = r.width * r.height < 5000; // small buttons preferred
+        let score = 1000;
+        score -= vDist;               // closer vertically -> higher score
+        score -= hDist * 0.7;         // closer horizontally -> higher
+        if (iconOnly) score += 150;
+        if (areaSmall) score += 100;
+        if (!isRight) score -= 400;
+        // aria-label bonuses
+        const lbl = (b.getAttribute('aria-label') || '').toLowerCase();
+        if (/generat|submit|send|run|create|prompt/.test(lbl)) score += 300;
+        return { b, score, r, lbl, text, iconOnly };
+      });
+
+      // Filter out obviously bad candidates
+      const good = scored.filter(s => s.score > 0);
+      good.sort((a, b) => b.score - a.score);
+      if (!good.length) return { ok: false, reason: 'no button near input', totalBtns: allBtns.length };
+
+      const top = good.slice(0, 3);
+      good[0].b.click();
+      return {
+        ok: true,
+        clicked: {
+          score: good[0].score,
+          rect: { top: good[0].r.top, left: good[0].r.left, w: good[0].r.width, h: good[0].r.height },
+          lbl: good[0].lbl,
+          text: good[0].text,
+          iconOnly: good[0].iconOnly,
+        },
+        top3: top.map(s => ({ score: s.score, lbl: s.lbl, text: s.text, rect: [s.r.top|0, s.r.left|0, s.r.width|0] })),
+      };
     }
     """
     result = await page.evaluate(js)

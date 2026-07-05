@@ -165,16 +165,18 @@ export default function Scenes() {
     setBulkBusy(true);
     try {
       const res = await api.post("/veo/export-batch", { scene_ids: ids });
-      const { batch_id, count, txt } = res.data;
-      // Download the .txt file to the user's machine
-      const blob = new Blob([txt], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `veo_batch_${batch_id.slice(0, 8)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-      alert(`Batch created (${count} prompts).\n\n1. Open noVNC → Chrome\n2. Open VEO Automation extension → Text-to-Image mode\n3. Upload the downloaded .txt file\n4. Click Run\n\nGenerated images will automatically appear in Scene Studio.`);
+      const { batch_id, count, filename, vps_path } = res.data;
+      alert(
+        `✔ Batch created with ${count} prompts.\n\n` +
+        `File saved on VPS at:\n${vps_path}\n\n` +
+        `In noVNC:\n` +
+        `1. Open Chrome (already running)\n` +
+        `2. VEO Automation extension → Text-to-Image mode\n` +
+        `3. Click "Upload .txt file"\n` +
+        `4. In the file picker, click "Desktop" (left sidebar) → "veo_batches" → select ${filename}\n` +
+        `5. Click Run\n\n` +
+        `Images will appear here on the VEO Batches page as they generate.`
+      );
       clearSelection();
     } catch (e) {
       alert("Export failed: " + (e?.response?.data?.detail || e?.message));

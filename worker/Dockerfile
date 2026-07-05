@@ -38,6 +38,12 @@ RUN printf '#!/bin/sh\nexec /opt/google/chrome/google-chrome --no-sandbox --disa
 
 COPY . /app
 
+# Make the batches directory easy to reach from noVNC file pickers by placing a
+# symlink on the desktop of the user that noVNC connects as (root).
+RUN mkdir -p /root/Desktop && \
+    ln -sfn /data/batches /root/Desktop/veo_batches && \
+    ln -sfn /data/downloads /root/Desktop/veo_downloads
+
 # supervisord runs Xvfb + x11vnc + websockify(noVNC) + fluxbox WM + fastapi worker
 COPY supervisord.conf /etc/supervisor/conf.d/worker.conf
 

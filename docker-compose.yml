@@ -37,6 +37,7 @@ services:
       IMAGES_DIR: /data/images
       VIDEOS_DIR: /data/videos
       DOWNLOADS_DIR: /data/downloads
+      BATCHES_DIR: /data/batches
       PLAYWRIGHT_PROFILE_DIR: /data/playwright-profile
       REMOTION_PROJECT_DIR: /data/remotion
       NOVNC_URL: ${NOVNC_URL:-}

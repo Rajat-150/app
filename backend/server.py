@@ -28,9 +28,11 @@ DB_NAME = os.environ["DB_NAME"]
 IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/app/data/images"))
 VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", "/app/data/videos"))
 DOWNLOADS_DIR = Path(os.environ.get("DOWNLOADS_DIR", "/app/data/downloads"))
+BATCHES_DIR = Path(os.environ.get("BATCHES_DIR", "/app/data/batches"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+BATCHES_DIR.mkdir(parents=True, exist_ok=True)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -578,7 +580,11 @@ async def veo_export_batch(payload: Dict[str, Any]):
     await db.veo_batches.insert_one(batch.model_dump())
     # Build .txt payload: one prompt per double-newline (VEO Automation format)
     txt = "\n\n".join(it.prompt for it in items)
-    return {"batch_id": batch.id, "count": len(items), "txt": txt}
+    # Save the .txt on the VPS so it's directly available in noVNC file picker
+    fname = f"veo_batch_{batch.id[:8]}.txt"
+    fpath = BATCHES_DIR / fname
+    fpath.write_text(txt, encoding="utf-8")
+    return {"batch_id": batch.id, "count": len(items), "txt": txt, "filename": fname, "vps_path": str(fpath)}
 
 
 @api.get("/veo/batches")

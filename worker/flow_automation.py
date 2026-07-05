@@ -59,24 +59,54 @@ async def dump_debug(page: Optional[Page], tag: str) -> str:
 
 
 async def ensure_in_project(page: Page) -> None:
-    """Land on a Google Flow project page with the prompt bar accessible.
+    """Land on a Google Flow project page with the *main* prompt bar accessible.
 
     Strategy:
-      - If URL already contains /project/, we're good.
-      - Otherwise try to click an existing project tile.
-      - Only if no tile exists, click a *specifically-labelled* 'New project' button
-        (never a generic 'Create', which sometimes matches 'Create character').
-      - Finally, press Escape a few times to dismiss any modal overlay.
+      - Close any modals with Escape.
+      - Close Google Flow's "Untitled session" AI chat side-panel if it is open
+        (it accepts prompts but sends them to a chatbot, not the image generator).
+      - If URL already contains /project/, use it. Otherwise click a project tile.
     """
     for _ in range(4):
         await page.keyboard.press("Escape")
         await asyncio.sleep(0.2)
 
+    # Close AI chat sidebar (has an X close button and title "Untitled session")
+    close_chat_js = """
+    () => {
+      // Find any close-button that lives inside a container mentioning "session" or "chat".
+      const panels = Array.from(document.querySelectorAll('*'))
+        .filter(el => /session|assistant|chat|brainstorm/i.test(el.textContent || ''))
+        .filter(el => el.getBoundingClientRect && el.getBoundingClientRect().width > 200);
+      for (const p of panels) {
+        // Find nearby close buttons within this panel
+        const btns = p.querySelectorAll('button');
+        for (const b of btns) {
+          const label = (b.getAttribute('aria-label') || '').toLowerCase();
+          const text = (b.innerText || '').trim().toLowerCase();
+          if (/^(close|dismiss|hide|×|x)$/.test(label) || /close|dismiss/i.test(label)) {
+            b.click();
+            return { closed: true, label };
+          }
+        }
+      }
+      // Alt: click any top-right button with X in a fixed/absolute container
+      const xBtns = Array.from(document.querySelectorAll('button[aria-label*="Close" i], button[aria-label*="Dismiss" i], button[aria-label*="Hide" i]'))
+        .filter(b => b.offsetParent);
+      if (xBtns.length) {
+        xBtns[xBtns.length - 1].click();  // last is usually the rightmost / newest panel
+        return { closed: true, altBtn: true };
+      }
+      return { closed: false };
+    }
+    """
+    r = await page.evaluate(close_chat_js)
+    logger.info("close AI chat panel: %s", r)
+    await asyncio.sleep(0.6)
+
     if "/project/" in page.url:
-        await asyncio.sleep(0.6)
         return
 
-    # Look for existing project tile (href-based, most stable)
     try:
         tile = page.locator('a[href*="/project/"]').first
         await tile.click(timeout=6000)
@@ -84,11 +114,11 @@ async def ensure_in_project(page: Page) -> None:
         for _ in range(4):
             await page.keyboard.press("Escape")
             await asyncio.sleep(0.2)
+        await page.evaluate(close_chat_js)
         return
     except Exception:
         pass
 
-    # Fall back: click a strictly-named 'New project' button
     for sel in [
         'button:has-text("New project")',
         'button:has-text("New Project")',
@@ -96,13 +126,11 @@ async def ensure_in_project(page: Page) -> None:
     ]:
         if await _try(page, sel, "click", timeout=4000):
             await page.wait_for_load_state("networkidle", timeout=15000)
-            for _ in range(4):
-                await page.keyboard.press("Escape")
-                await asyncio.sleep(0.2)
+            await page.evaluate(close_chat_js)
             return
 
     await dump_debug(page, "no_project")
-    raise RuntimeError("Could not enter any project — none exist and 'New project' button not found")
+    raise RuntimeError("Could not enter any project")
 
 
 async def open_or_create_today_project(page: Page) -> None:
@@ -125,7 +153,7 @@ async def apply_settings(page: Page, aspect: str, count: str) -> None:
 
 
 async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
-    # Dismiss any overlay modals first (asset picker, character sheet, etc)
+    # Dismiss any overlay modals + AI chat panel first
     for _ in range(4):
         await page.keyboard.press("Escape")
         await asyncio.sleep(0.2)
@@ -139,14 +167,23 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
         if (!el.offsetParent) return false;
         const r = el.getBoundingClientRect();
         if (r.height < 20 || r.width < 100) return false;
-        // Exclude anything labelled 'search' — that's Google Flow's asset search bar.
         const meta = ((el.placeholder || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-placeholder') || '')).toLowerCase();
-        if (/search|find|look for/.test(meta)) return false;
+        // Exclude search bars AND the AI chat prompt ("What do you want to create?")
+        if (/search|find|look for|what do you want to create|what would you like/.test(meta)) return false;
+        // Exclude inputs that sit in a container whose text mentions "session" (AI chat)
+        let p = el;
+        for (let i = 0; i < 6 && p; i++) {
+          p = p.parentElement;
+          if (p && /untitled session|brainstorm|chat with/i.test(p.textContent || '')) {
+            const rp = p.getBoundingClientRect();
+            // only exclude if the parent is small enough to actually be the chat panel
+            if (rp.width < 600) return false;
+          }
+        }
         return true;
       });
       const totalOnPage = cands.length;
       if (!visible.length) return { ok: false, count: totalOnPage };
-      // Prefer the bottom-most (highest .top means lowest on screen)
       visible.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
       const target = visible[0];
       target.focus();

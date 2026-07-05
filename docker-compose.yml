@@ -36,6 +36,7 @@ services:
       DATA_DIR: /data
       IMAGES_DIR: /data/images
       VIDEOS_DIR: /data/videos
+      DOWNLOADS_DIR: /data/downloads
       PLAYWRIGHT_PROFILE_DIR: /data/playwright-profile
       REMOTION_PROJECT_DIR: /data/remotion
       NOVNC_URL: ${NOVNC_URL:-}
@@ -70,12 +71,12 @@ services:
       PLAYWRIGHT_PROFILE_DIR: /data/playwright-profile
       IMAGES_DIR: /data/images
       SCREENSHOTS_DIR: /data/screenshots
+      DOWNLOADS_DIR: /data/downloads
     volumes:
       - ./data:/data
     ports:
       - "6080:6080"   # noVNC web UI
-      # 8002 is internal-only; backend talks to it over the docker network.
-    shm_size: "2gb"   # Chrome needs this
+    shm_size: "2gb"
 
 volumes:
   mongo_data:

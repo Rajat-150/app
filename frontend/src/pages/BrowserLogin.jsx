@@ -55,10 +55,12 @@ export default function BrowserLogin() {
           <ol className="space-y-3 text-sm" style={{ color: "var(--text-secondary)" }}>
             <li><span className="font-mono badge mr-2">01</span> Start the worker: <span className="font-mono">docker compose --profile automation up -d worker</span></li>
             <li><span className="font-mono badge mr-2">02</span> Click <span className="font-mono">Open noVNC desktop</span> → a full Linux desktop appears in a new tab</li>
-            <li><span className="font-mono badge mr-2">03</span> Right-click the desktop → open a terminal → type <span className="font-mono">google-chrome</span> → Enter <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>(no-sandbox flag is added automatically by our wrapper)</span></li>
+            <li><span className="font-mono badge mr-2">03</span> Right-click the desktop → open a terminal → type <span className="font-mono">google-chrome</span> → Enter</li>
             <li><span className="font-mono badge mr-2">04</span> In that Chrome window, go to <span className="font-mono">labs.google/fx/tools/flow</span> and sign in with your Google account</li>
-            <li><span className="font-mono badge mr-2">05</span> Close the Chrome window (cookies are saved to <span className="font-mono">/data/playwright-profile</span>)</li>
-            <li><span className="font-mono badge mr-2">06</span> Come back here, click <span className="font-mono">Recheck</span>, then head to Scenes and hit Generate. It will now run automatically.</li>
+            <li><span className="font-mono badge mr-2">05</span> Install the <a href="https://chromewebstore.google.com/detail/veo-automation-auto-veo-n/fnmijgmnjpealnnadjpjilaanhhambeb" target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent)" }}>VEO Automation extension</a> — sign in with your paid account inside the extension popup</li>
+            <li><span className="font-mono badge mr-2">06</span> In the extension → Settings tab → set <span className="font-mono">Save to folder</span> = <span className="font-mono">sceneStudio</span> and turn ON <span className="font-mono">Auto Download</span></li>
+            <li><span className="font-mono badge mr-2">07</span> Close Chrome. Session + extension are now persisted in <span className="font-mono">/data/playwright-profile</span></li>
+            <li><span className="font-mono badge mr-2">08</span> Chrome downloads are pre-configured to save to <span className="font-mono">/data/downloads</span>, which the Scene Studio watcher monitors — every image the extension generates will auto-appear on the VEO Batches + Images pages.</li>
           </ol>
         </div>
       </div>

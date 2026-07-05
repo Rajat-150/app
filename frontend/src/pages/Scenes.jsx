@@ -159,6 +159,28 @@ export default function Scenes() {
     } finally { setBulkBusy(false); }
   };
 
+  const exportVeoBatch = async () => {
+    const ids = Object.keys(selected).filter((k) => selected[k]);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.post("/veo/export-batch", { scene_ids: ids });
+      const { batch_id, count, txt } = res.data;
+      // Download the .txt file to the user's machine
+      const blob = new Blob([txt], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `veo_batch_${batch_id.slice(0, 8)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      alert(`Batch created (${count} prompts).\n\n1. Open noVNC → Chrome\n2. Open VEO Automation extension → Text-to-Image mode\n3. Upload the downloaded .txt file\n4. Click Run\n\nGenerated images will automatically appear in Scene Studio.`);
+      clearSelection();
+    } catch (e) {
+      alert("Export failed: " + (e?.response?.data?.detail || e?.message));
+    } finally { setBulkBusy(false); }
+  };
+
   return (
     <div className="stagger-in" data-testid="scenes-page">
       <PageHeader
@@ -202,6 +224,9 @@ export default function Scenes() {
           <div className="text-sm"><span className="font-mono">{selectedCount}</span> scene{selectedCount === 1 ? "" : "s"} selected</div>
           <div className="flex items-center gap-2">
             <button onClick={clearSelection} className="btn-ghost" data-testid="scenes-selection-clear-btn">Clear</button>
+            <button onClick={exportVeoBatch} disabled={bulkBusy} className="btn-secondary flex items-center gap-2" data-testid="scenes-export-veo-btn">
+              <Sparkles size={14} /> Export to VEO ({selectedCount})
+            </button>
             <button onClick={bulkGenerate} disabled={bulkBusy} className="btn-primary flex items-center gap-2" data-testid="scenes-bulk-generate-btn">
               <Wand2 size={14} /> {bulkBusy ? "Queueing…" : `Bulk Generate (${selectedCount})`}
             </button>

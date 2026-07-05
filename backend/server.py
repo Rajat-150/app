@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Header
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
@@ -27,8 +27,10 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/app/data/images"))
 VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", "/app/data/videos"))
+DOWNLOADS_DIR = Path(os.environ.get("DOWNLOADS_DIR", "/app/data/downloads"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -531,6 +533,144 @@ async def n8n_receive_scenes(payload: Dict[str, Any], x_webhook_secret: Optional
         await db.scenes.insert_one(scene.model_dump())
         inserted += 1
     return {"inserted": inserted}
+
+
+# ---------- VEO Automation batch export + file watcher ----------
+class VeoBatchItem(BaseModel):
+    scene_id: str
+    scene_key: Optional[str] = None
+    prompt: str
+    consumed: bool = False
+    image_id: Optional[str] = None
+
+
+class VeoBatch(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+    items: List[VeoBatchItem] = []
+    kind: str = "image"  # image | video
+    status: str = "open"  # open | complete
+    consumed: int = 0
+
+
+@api.post("/veo/export-batch")
+async def veo_export_batch(payload: Dict[str, Any]):
+    """Create a VEO batch: {scene_ids:[...]} → returns batch id + prompts .txt content."""
+    scene_ids = payload.get("scene_ids") or []
+    if not scene_ids:
+        raise HTTPException(400, "scene_ids required")
+    items = []
+    for sid in scene_ids:
+        s = await db.scenes.find_one({"id": sid}, {"_id": 0})
+        if not s:
+            continue
+        prompt = (s.get("image_prompt") or "").strip()
+        if not prompt:
+            continue
+        items.append(VeoBatchItem(
+            scene_id=sid,
+            scene_key=s.get("scene_key") or s.get("scene_number"),
+            prompt=prompt,
+        ))
+    if not items:
+        raise HTTPException(400, "no valid prompts to export")
+    batch = VeoBatch(items=items)
+    await db.veo_batches.insert_one(batch.model_dump())
+    # Build .txt payload: one prompt per double-newline (VEO Automation format)
+    txt = "\n\n".join(it.prompt for it in items)
+    return {"batch_id": batch.id, "count": len(items), "txt": txt}
+
+
+@api.get("/veo/batches")
+async def veo_list_batches():
+    return await db.veo_batches.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api.get("/veo/batches/{batch_id}/download")
+async def veo_download_txt(batch_id: str):
+    batch = await db.veo_batches.find_one({"id": batch_id}, {"_id": 0})
+    if not batch:
+        raise HTTPException(404, "batch not found")
+    txt = "\n\n".join(it["prompt"] for it in batch["items"])
+    headers = {"Content-Disposition": f'attachment; filename="veo_batch_{batch_id[:8]}.txt"'}
+    return PlainTextResponse(txt, headers=headers)
+
+
+async def _watch_downloads():
+    """Poll DOWNLOADS_DIR for new image files; match to oldest open VEO batch FIFO."""
+    logger.info("VEO downloads watcher started on %s", DOWNLOADS_DIR)
+    seen: set = set()
+    # Seed with existing files so we don't reprocess on restart
+    for p in DOWNLOADS_DIR.rglob("*"):
+        if p.is_file():
+            seen.add(str(p))
+    while True:
+        try:
+            await asyncio.sleep(3)
+            for p in sorted(DOWNLOADS_DIR.rglob("*"), key=lambda x: x.stat().st_mtime if x.exists() else 0):
+                if not p.is_file() or str(p) in seen:
+                    continue
+                ext = p.suffix.lower()
+                if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    seen.add(str(p))
+                    continue
+                # Wait until file stops growing (in-progress download)
+                s1 = p.stat().st_size
+                await asyncio.sleep(1.5)
+                if not p.exists() or p.stat().st_size != s1 or s1 == 0:
+                    continue
+                seen.add(str(p))
+                await _consume_downloaded_image(p)
+        except Exception:
+            logger.exception("watcher loop error")
+
+
+async def _consume_downloaded_image(src_path: Path):
+    """Attach a downloaded image to the oldest open VEO batch item."""
+    batch = await db.veo_batches.find_one({"status": "open", "kind": "image"}, sort=[("created_at", 1)])
+    if not batch:
+        logger.info("no open batch to consume %s", src_path.name)
+        return
+    # Find next unconsumed item
+    idx = next((i for i, it in enumerate(batch["items"]) if not it.get("consumed")), None)
+    if idx is None:
+        await db.veo_batches.update_one({"id": batch["id"]}, {"$set": {"status": "complete"}})
+        return
+
+    item = batch["items"][idx]
+    import re
+    safe_key = re.sub(r"[^A-Za-z0-9._-]", "_", str(item.get("scene_key") or item["scene_id"][:8]))
+    filename = f"{safe_key}_{uuid.uuid4().hex[:6]}{src_path.suffix.lower()}"
+    dest = IMAGES_DIR / filename
+    try:
+        shutil.move(str(src_path), str(dest))
+    except Exception as e:
+        logger.exception("move failed: %s", e)
+        return
+
+    asset = ImageAsset(
+        scene_id=item["scene_id"],
+        scene_key=item.get("scene_key"),
+        filename=filename,
+        prompt=item["prompt"],
+        source="veo_extension",
+    )
+    await db.images.insert_one(asset.model_dump())
+    await db.scenes.update_one({"id": item["scene_id"]}, {"$set": {"status": "image_generated"}})
+    # Mark item consumed
+    await db.veo_batches.update_one(
+        {"id": batch["id"], "items.scene_id": item["scene_id"]},
+        {"$set": {f"items.{idx}.consumed": True, f"items.{idx}.image_id": asset.id}, "$inc": {"consumed": 1}},
+    )
+    # If last item, mark batch complete
+    if idx == len(batch["items"]) - 1:
+        await db.veo_batches.update_one({"id": batch["id"]}, {"$set": {"status": "complete"}})
+    logger.info("attached %s -> scene %s", filename, item.get("scene_key"))
+
+
+@app.on_event("startup")
+async def _start_watcher():
+    asyncio.create_task(_watch_downloads())
 
 
 # ---------- CORS & mount ----------

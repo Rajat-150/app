@@ -1,9 +1,10 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Film, Image as ImageIcon, Video, Terminal, Settings, Activity, Zap, Monitor } from "lucide-react";
+import { LayoutDashboard, Film, Image as ImageIcon, Video, Terminal, Settings, Activity, Zap, Monitor, Sparkles } from "lucide-react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/scenes", label: "Scenes", icon: Film, testId: "nav-scenes" },
+  { to: "/veo", label: "VEO Batches", icon: Sparkles, testId: "nav-veo" },
   { to: "/images", label: "Images", icon: ImageIcon, testId: "nav-images" },
   { to: "/videos", label: "Videos", icon: Video, testId: "nav-videos" },
   { to: "/render", label: "Render", icon: Zap, testId: "nav-render" },

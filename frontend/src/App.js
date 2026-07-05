@@ -8,6 +8,7 @@ import Videos from "@/pages/Videos";
 import Render from "@/pages/Render";
 import Jobs from "@/pages/Jobs";
 import BrowserLogin from "@/pages/BrowserLogin";
+import VeoBatches from "@/pages/VeoBatches";
 import Settings from "@/pages/Settings";
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/scenes" element={<Scenes />} />
+              <Route path="/veo" element={<VeoBatches />} />
               <Route path="/images" element={<Images />} />
               <Route path="/videos" element={<Videos />} />
               <Route path="/render" element={<Render />} />

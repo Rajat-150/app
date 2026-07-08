@@ -307,25 +307,33 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
 
 
 async def wait_for_and_download_image(page: Page, scene_key: str) -> str:
-    img = page.locator(S.GENERATED_IMAGE).first
-    try:
-        await img.wait_for(state="visible", timeout=180_000)
-    except PWTimeout:
-        await dump_debug(page, "image_timeout")
-        raise RuntimeError("Image never appeared within 3 min — update flow_selectors.GENERATED_IMAGE or check credits")
+    # Snapshot existing image URLs BEFORE waiting, so we can detect a NEW one.
+    existing_srcs = set(await page.locator(S.GENERATED_IMAGE).evaluate_all(
+        "els => els.map(e => e.getAttribute('src')).filter(Boolean)"
+    ))
+    logger.info("existing images before generation: %d", len(existing_srcs))
 
-    src = await img.get_attribute("src")
+    # Poll until a new (unseen) image appears
+    src = None
+    deadline_iters = 60  # 60 * 3s = 3 min
+    for _ in range(deadline_iters):
+        await asyncio.sleep(3)
+        current_srcs = await page.locator(S.GENERATED_IMAGE).evaluate_all(
+            "els => els.map(e => e.getAttribute('src')).filter(Boolean)"
+        )
+        new_srcs = [s for s in current_srcs if s not in existing_srcs]
+        if new_srcs:
+            src = new_srcs[-1]  # newest
+            break
+
     if not src:
-        await dump_debug(page, "image_no_src")
-        raise RuntimeError("Image has no src attribute")
+        await dump_debug(page, "image_timeout")
+        raise RuntimeError("No NEW image appeared within 3 min — check credits or update selectors")
 
-    # Download the image bytes via Playwright's request context, which shares
-    # session cookies with the page but bypasses page-level CORS/CSP.
     try:
         resp = await page.context.request.get(src)
         content = await resp.body()
     except Exception as e:
-        # Fallback: use requests-like fetch via node-inside-page but wrap in try
         try:
             byte_array = await page.evaluate(
                 """async (u) => {
@@ -337,7 +345,7 @@ async def wait_for_and_download_image(page: Page, scene_key: str) -> str:
             )
             content = bytes(byte_array)
         except Exception as e2:
-            raise RuntimeError(f"could not download image bytes: {e} / fallback: {e2}")
+            raise RuntimeError(f"could not download image: {e} / {e2}")
 
     safe_key = re.sub(r"[^A-Za-z0-9._-]", "_", scene_key or "img")
     filename = f"{safe_key}_{uuid.uuid4().hex[:6]}.png"

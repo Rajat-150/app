@@ -319,18 +319,30 @@ async def wait_for_and_download_image(page: Page, scene_key: str) -> str:
         await dump_debug(page, "image_no_src")
         raise RuntimeError("Image has no src attribute")
 
-    data_url_js = """
-    async (u) => {
-      const r = await fetch(u, { credentials: 'include' });
-      const buf = await r.arrayBuffer();
-      return Array.from(new Uint8Array(buf));
-    }
-    """
-    byte_array = await page.evaluate(data_url_js, src)
+    # Download the image bytes via Playwright's request context, which shares
+    # session cookies with the page but bypasses page-level CORS/CSP.
+    try:
+        resp = await page.context.request.get(src)
+        content = await resp.body()
+    except Exception as e:
+        # Fallback: use requests-like fetch via node-inside-page but wrap in try
+        try:
+            byte_array = await page.evaluate(
+                """async (u) => {
+                  const r = await fetch(u);
+                  const buf = await r.arrayBuffer();
+                  return Array.from(new Uint8Array(buf));
+                }""",
+                src,
+            )
+            content = bytes(byte_array)
+        except Exception as e2:
+            raise RuntimeError(f"could not download image bytes: {e} / fallback: {e2}")
+
     safe_key = re.sub(r"[^A-Za-z0-9._-]", "_", scene_key or "img")
     filename = f"{safe_key}_{uuid.uuid4().hex[:6]}.png"
     fpath = IMAGES_DIR / filename
-    fpath.write_bytes(bytes(byte_array))
+    fpath.write_bytes(content)
     return str(fpath)
 
 
@@ -369,6 +381,11 @@ async def generate_image(prompt: str, scene_key: str, settings: Dict[str, Any]) 
                         "--no-sandbox",
                         "--disable-dev-shm-usage",
                         "--disable-blink-features=AutomationControlled",
+                        "--disable-gpu",
+                        "--disable-software-rasterizer",
+                        "--disable-features=CalculateNativeWinOcclusion,TranslateUI",
+                        "--no-first-run",
+                        "--no-default-browser-check",
                         "--start-maximized",
                     ],
                     viewport=None,

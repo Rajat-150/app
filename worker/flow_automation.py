@@ -153,7 +153,7 @@ async def apply_settings(page: Page, aspect: str, count: str) -> None:
 
 
 async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
-    # Dismiss any overlay modals + AI chat panel first
+    # Dismiss any overlay modals
     for _ in range(4):
         await page.keyboard.press("Escape")
         await asyncio.sleep(0.2)
@@ -166,34 +166,44 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
       const visible = cands.filter(el => {
         if (!el.offsetParent) return false;
         const r = el.getBoundingClientRect();
-        if (r.height < 20 || r.width < 100) return false;
+        // Main Google Flow prompt bar is WIDE (>500px). The AI chat sidebar input
+        // is narrow (~380px). This width filter is the key discriminator.
+        if (r.width < 500 || r.height < 20) return false;
         const meta = ((el.placeholder || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-placeholder') || '')).toLowerCase();
-        // Exclude search bars AND the AI chat prompt ("What do you want to create?")
-        if (/search|find|look for|what do you want to create|what would you like/.test(meta)) return false;
-        // Exclude inputs that sit in a container whose text mentions "session" (AI chat)
+        // Exclude search bars, AI chat prompts, and anything obviously not the image gen bar
+        if (/search|find|look for|what do you want to create|what would you like|describe your character/.test(meta)) return false;
+        // Chat panel inputs are inside containers mentioning session/brainstorm
         let p = el;
         for (let i = 0; i < 6 && p; i++) {
           p = p.parentElement;
-          if (p && /untitled session|brainstorm|chat with/i.test(p.textContent || '')) {
+          if (p && /untitled session|brainstorm/i.test(p.textContent || '')) {
             const rp = p.getBoundingClientRect();
-            // only exclude if the parent is small enough to actually be the chat panel
             if (rp.width < 600) return false;
           }
         }
         return true;
       });
       const totalOnPage = cands.length;
-      if (!visible.length) return { ok: false, count: totalOnPage };
+      if (!visible.length) {
+        return {
+          ok: false,
+          count: totalOnPage,
+          allWidths: cands.filter(el => el.offsetParent).map(el => Math.round(el.getBoundingClientRect().width)),
+        };
+      }
+      // Prefer bottom-most wide input (the main prompt bar sits at bottom of viewport)
       visible.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
       const target = visible[0];
       target.focus();
       target.click();
       target.scrollIntoView({ block: 'center' });
+      const tr = target.getBoundingClientRect();
       return {
         ok: true,
         tag: target.tagName,
         placeholder: target.placeholder || target.getAttribute('aria-label') || target.getAttribute('data-placeholder') || '',
-        top: target.getBoundingClientRect().top,
+        width: Math.round(tr.width),
+        top: Math.round(tr.top),
         totalOnPage,
       };
     }
@@ -202,7 +212,7 @@ async def paste_prompt_and_generate(page: Page, prompt: str) -> None:
     logger.info("focus attempt: %s", r)
     if not r.get("ok"):
         await dump_debug(page, "prompt_input_missing")
-        raise RuntimeError(f"Could not find prompt input (visible candidates on page: {r.get('count')})")
+        raise RuntimeError(f"Could not find main prompt input (widths seen: {r.get('allWidths')})")
     await asyncio.sleep(0.4)
 
     await page.keyboard.press("Control+A")
